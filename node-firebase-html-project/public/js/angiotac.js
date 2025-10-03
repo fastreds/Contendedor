@@ -1,41 +1,18 @@
-// public/js/angiotac.js
+// Importaciones de Firebase específicas para este módulo
+import { collection, doc, addDoc, onSnapshot, getDoc, updateDoc, deleteDoc, serverTimestamp, query, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 
-// Importaciones de Firebase necesarias para este módulo
-import { 
-    doc,
-    getDoc,
-    collection,
-    onSnapshot,
-    addDoc,
-    deleteDoc,
-    updateDoc,
-    query,
-    serverTimestamp,
-    arrayRemove,
-    arrayUnion
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import {
-    ref,
-    uploadBytesResumable,
-    getDownloadURL,
-    deleteObject
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
-
-// Estado local del módulo
-let db, storage, currentUser;
-let currentFiles = [];
-
-// --- RENDERIZADO DE LA UI DEL MÓDULO ---
-
-function renderUI(containerId) {
-    const container = document.getElementById(containerId);
-    const tableHeaders = ['Paciente', 'Fecha Estudio', 'Estudio', 'Estado Reporte', 'Acciones'];
+// La función principal que configura todo el módulo.
+// Se añade 'export' para que pueda ser importada desde app.js
+export function setupAngioTAC(db, storage, showAlert, showConfirm, getCurrentUser) {
+    const angioTACView = document.getElementById('angiotac-view');
     
-    container.innerHTML = `
+    // Plantilla HTML para la vista del módulo.
+    const viewHTML = `
         <div class="bg-white p-6 rounded-lg shadow-md">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-semibold">Estudios AngioTAC</h2>
-                <button id="add-angiotac-btn" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700">
+                <h2 class="text-xl font-semibold">Registros de AngioTAC</h2>
+                <button id="add-study-btn" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 flex items-center">
                     <i class="fas fa-plus mr-2"></i>Añadir Estudio
                 </button>
             </div>
@@ -43,277 +20,143 @@ function renderUI(containerId) {
                 <table class="min-w-full bg-white">
                     <thead class="bg-gray-200">
                         <tr>
-                            ${tableHeaders.map(h => `<th class="py-3 px-4 text-left">${h}</th>`).join('')}
+                            <th class="py-3 px-4 text-left">Paciente</th>
+                            <th class="py-3 px-4 text-left">Cédula</th>
+                            <th class="py-3 px-4 text-left">Fecha Estudio</th>
+                            <th class="py-3 px-4 text-left">Estado Reporte</th>
+                            <th class="py-3 px-4 text-left">Correo Enviado</th>
+                            <th class="py-3 px-4 text-center">Acciones</th>
                         </tr>
                     </thead>
-                    <tbody id="angiotac-table-body"></tbody>
+                    <tbody id="angiotac-table-body">
+                        <!-- Los datos se insertarán aquí -->
+                    </tbody>
                 </table>
             </div>
         </div>
     `;
+    angioTACView.innerHTML = viewHTML;
 
-    document.getElementById('add-angiotac-btn').addEventListener('click', () => openStudyModal(null));
-    listenForStudies();
-}
-
-// --- LÓGICA DE FIRESTORE ---
-
-function listenForStudies() {
-    const studiesCollection = collection(db, 'angioTAC');
-    onSnapshot(studiesCollection, (snapshot) => {
-        const tableBody = document.getElementById('angiotac-table-body');
-        tableBody.innerHTML = '';
-        if (snapshot.empty) {
-            tableBody.innerHTML = `<tr><td colspan="5" class="text-center py-4">No hay estudios registrados.</td></tr>`;
-            return;
-        }
-        snapshot.forEach(doc => {
-            renderStudyRow({ id: doc.id, ...doc.data() });
-        });
-    });
-}
-
-function renderStudyRow(studyData) {
-    const tableBody = document.getElementById('angiotac-table-body');
-    const row = document.createElement('tr');
-    row.className = 'border-b';
-    const studyDate = studyData.studyDate ? new Date(studyData.studyDate.seconds * 1000).toLocaleDateString() : 'N/A';
-
-    row.innerHTML = `
-        <td class="py-3 px-4">${studyData.patientName}</td>
-        <td class="py-3 px-4">${studyDate}</td>
-        <td class="py-3 px-4">${studyData.studyName}</td>
-        <td class="py-3 px-4"><span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${studyData.reportStatus === 'Completado' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">${studyData.reportStatus || 'N/A'}</span></td>
-    `;
-    
-    const actionsCell = document.createElement('td');
-    actionsCell.className = 'py-3 px-4';
-    actionsCell.innerHTML = `
-        <button class="edit-btn text-blue-500 hover:text-blue-700 mr-2" title="Editar"><i class="fas fa-edit"></i></button>
-        <button class="delete-btn text-red-500 hover:text-red-700 mr-2" title="Eliminar"><i class="fas fa-trash"></i></button>
-        <button class="email-btn text-green-500 hover:text-green-700" title="Enviar por Correo"><i class="fas fa-envelope"></i></button>
-        <button class="log-btn text-gray-500 hover:text-gray-700 ml-1" title="Ver Bitácora de Envíos"><i class="fas fa-history"></i></button>
-    `;
-    row.appendChild(actionsCell);
-    tableBody.appendChild(row);
-
-    // Event Listeners
-    actionsCell.querySelector('.edit-btn').addEventListener('click', () => openStudyModal(studyData));
-    actionsCell.querySelector('.delete-btn').addEventListener('click', () => deleteStudy(studyData));
-    actionsCell.querySelector('.email-btn').addEventListener('click', () => sendStudyByEmail(studyData.id));
-    actionsCell.querySelector('.log-btn').addEventListener('click', () => showEmailLog(studyData.id));
-}
-
-// --- LÓGICA DEL MODAL ---
-
-async function openStudyModal(studyData = null) {
+    // --- ELEMENTOS DEL DOM ESPECÍFICOS DE ANGIOTAC ---
+    const addStudyBtn = document.getElementById('add-study-btn');
+    const angioTACTableBody = document.getElementById('angiotac-table-body');
+    const studyModal = document.getElementById('study-modal');
+    const closeModalBtn = document.getElementById('close-modal-btn');
+    const cancelModalBtn = document.getElementById('cancel-modal-btn');
     const studyForm = document.getElementById('study-form');
-    const modal = document.getElementById('study-modal');
-    studyForm.reset();
-    document.getElementById('study-id').value = '';
-    document.getElementById('study-type').value = 'angiotac';
-    currentFiles = studyData?.files || [];
-    
-    // Mostrar campos específicos de AngioTAC
-     ['study-date', 'referring-physician', 'referring-physician-email', 'report-status', 'audit-info', 'file-upload'].forEach(id => {
-        const el = document.getElementById(id)?.closest('.pt-4, div');
-        if (el) el.style.display = 'block';
-    });
-    
-    if (studyData) {
-        document.getElementById('modal-title').textContent = 'Editar Estudio AngioTAC';
-        document.getElementById('study-id').value = studyData.id;
-        document.getElementById('patient-name').value = studyData.patientName || '';
-        document.getElementById('patient-cedula').value = studyData.patientCedula || '';
-        document.getElementById('patient-phone').value = studyData.patientPhone || '';
-        document.getElementById('patient-email').value = studyData.patientEmail || '';
-        document.getElementById('study-name').value = studyData.studyName || '';
-        document.getElementById('study-date').value = studyData.studyDate ? new Date(studyData.studyDate.seconds * 1000).toISOString().split('T')[0] : '';
-        document.getElementById('referring-physician').value = studyData.referringPhysician || '';
-        document.getElementById('referring-physician-email').value = studyData.referringPhysicianEmail || '';
-        document.getElementById('report-status').value = studyData.reportStatus || 'Pendiente';
-        renderAuditInfo(studyData.audit);
-    } else {
-        document.getElementById('modal-title').textContent = 'Añadir Nuevo Estudio AngioTAC';
-        document.getElementById('report-status').value = 'Pendiente';
-        document.getElementById('audit-info').innerHTML = '';
-    }
-
-    const reportStatusEl = document.getElementById('report-status');
-    reportStatusEl.disabled = !['ADMINISTRADOR', 'MÉDICO'].includes(currentUser.role);
-    
-    renderAttachedFiles();
-
-    modal.classList.add('flex');
-    modal.classList.remove('hidden');
-}
-
-function renderAuditInfo(audit) {
-    const auditInfoEl = document.getElementById('audit-info');
-    auditInfoEl.innerHTML = '';
-    if (!audit) return;
-    if (audit.reportStatusLastModifiedBy) {
-        auditInfoEl.innerHTML += `<p class="text-xs text-gray-500">Estado modificado por: ${audit.reportStatusLastModifiedBy} el ${new Date(audit.reportStatusLastModifiedAt.seconds * 1000).toLocaleString()}</p>`;
-    }
-     if (audit.emailSentLastModifiedBy) {
-        auditInfoEl.innerHTML += `<p class="text-xs text-gray-500">Envío modificado por: ${audit.emailSentLastModifiedBy} el ${new Date(audit.emailSentLastModifiedAt.seconds * 1000).toLocaleString()}</p>`;
-    }
-}
-
-function renderAttachedFiles() {
-    const fileListEl = document.getElementById('file-list');
-    fileListEl.innerHTML = '';
-    currentFiles.forEach(file => {
-        const fileEl = document.createElement('div');
-        fileEl.className = 'flex items-center justify-between bg-gray-100 p-2 rounded';
-        fileEl.innerHTML = `
-            <a href="${file.url}" target="_blank" class="text-indigo-600 hover:underline text-sm truncate">${file.name}</a>
-            <button type="button" class="delete-file-btn text-red-500 hover:text-red-700 ml-2" data-storage-path="${file.storagePath}">&times;</button>
-        `;
-        fileListEl.appendChild(fileEl);
-    });
-}
-
-// Delegación de eventos para los botones de eliminar archivo
-document.getElementById('file-list').addEventListener('click', (e) => {
-    if (e.target.classList.contains('delete-file-btn')) {
-        const storagePath = e.target.dataset.storagePath;
-        const fileToDelete = currentFiles.find(f => f.storagePath === storagePath);
-        if (fileToDelete) {
-            deleteFile(fileToDelete);
-        }
-    }
-});
-
-
-// --- LÓGICA DE STORAGE Y ARCHIVOS ---
-
-async function uploadFile(file, studyId) {
-    const filePath = `studies/${studyId}/${Date.now()}_${file.name}`;
-    const storageRef = ref(storage, filePath);
-    const uploadTask = uploadBytesResumable(storageRef, file);
-
-    return new Promise((resolve, reject) => {
-        uploadTask.on('state_changed', 
-            () => {}, 
-            (error) => reject(error), 
-            async () => {
-                const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-                resolve({ name: file.name, url: downloadURL, storagePath: filePath });
-            }
-        );
-    });
-}
-
-async function deleteFile(fileToDelete) {
-    if (!confirm(`¿Seguro que quieres eliminar el archivo ${fileToDelete.name}?`)) return;
-    const studyId = document.getElementById('study-id').value;
-    if (!studyId) {
-        alert("No se puede eliminar un archivo de un estudio no guardado.");
-        return;
-    }
-    
-    // Borrar de Storage
-    await deleteObject(ref(storage, fileToDelete.storagePath));
-    // Borrar de Firestore
-    await updateDoc(doc(db, 'angioTAC', studyId), { files: arrayRemove(fileToDelete) });
-    
-    // La UI se actualizará automáticamente por el listener de onSnapshot
-}
-
-
-// --- LÓGICA DE CORREO Y BITÁCORA ---
-
-async function sendStudyByEmail(studyId) {
-    if (!confirm("Esto simulará un envío de correo y registrará el evento. ¿Continuar?")) return;
-    const studyDocRef = doc(db, 'angioTAC', studyId);
-    
-    try {
-        const studyDoc = await getDoc(studyDocRef);
-        if(!studyDoc.exists()) throw new Error("Estudio no encontrado");
-        const studyData = studyDoc.data();
-        
-        await addDoc(collection(db, 'angioTAC', studyId, 'emailLog'), {
-            sentAt: serverTimestamp(),
-            sentBy: currentUser.displayName,
-            sentTo: studyData.patientEmail,
-            status: "Exitoso (Simulado)"
-        });
-
-        const audit = studyData.audit || {};
-        audit.emailSentLastModifiedBy = currentUser.displayName;
-        audit.emailSentLastModifiedAt = serverTimestamp();
-        
-        await updateDoc(studyDocRef, { emailSentStatus: "Enviado", audit: audit });
-        alert("Envío de correo simulado y registrado.");
-    } catch (error) {
-        console.error("Error al enviar correo:", error);
-        alert("Error al simular el envío.");
-    }
-}
-
-async function showEmailLog(studyId) {
-    const logCollectionRef = collection(db, 'angioTAC', studyId, 'emailLog');
-    const emailLogModal = document.getElementById('email-log-modal');
-    const emailLogContent = document.getElementById('email-log-content');
-    
-    onSnapshot(query(logCollectionRef), (snapshot) => {
-        emailLogContent.innerHTML = snapshot.empty ? '<p class="text-gray-500">No hay registros de envío.</p>' : '';
-        const logs = [];
-        snapshot.forEach(doc => logs.push(doc.data()));
-        logs.sort((a, b) => b.sentAt.seconds - a.sentAt.seconds);
-        logs.forEach(log => {
-            const logEl = document.createElement('div');
-            logEl.className = 'border-b p-2';
-            logEl.innerHTML = `<p><strong>Fecha:</strong> ${new Date(log.sentAt.seconds * 1000).toLocaleString()}</p><p><strong>Enviado por:</strong> ${log.sentBy}</p><p><strong>Destinatario:</strong> ${log.sentTo}</p><p><strong>Estado:</strong> ${log.status}</p>`;
-            emailLogContent.appendChild(logEl);
-        });
-    });
-
-    emailLogModal.classList.remove('hidden');
-    emailLogModal.classList.add('flex');
-}
-
-// --- ACCIONES CRUD ---
-
-async function handleFormSubmit(e) {
-    e.preventDefault();
-    if (document.getElementById('study-type').value !== 'angiotac') return;
-
-    const saveBtn = document.getElementById('save-study-btn');
+    const modalTitle = document.getElementById('modal-title');
+    const studyIdInput = document.getElementById('study-id');
+    const fileUploadInput = document.getElementById('file-upload');
+    const fileListContainer = document.getElementById('file-list');
+    const saveStudyBtn = document.getElementById('save-study-btn');
     const saveBtnText = document.getElementById('save-btn-text');
     const saveSpinner = document.getElementById('save-spinner');
+    const reportStatusSelect = document.getElementById('report-status');
+    const auditInfo = document.getElementById('audit-info');
+    const emailLogModal = document.getElementById('email-log-modal');
+    const closeEmailLogBtn = document.getElementById('close-email-log-btn');
+    const emailLogContent = document.getElementById('email-log-content');
 
-    saveBtn.disabled = true;
-    saveBtnText.textContent = 'Guardando...';
-    saveSpinner.classList.remove('hidden');
+    const studiesCollection = collection(db, "angioTAC");
+    let localFiles = []; // Almacenará los archivos a subir o eliminar
 
-    const studyId = document.getElementById('study-id').value;
-    const fileInput = document.getElementById('file-upload');
-    const newFiles = Array.from(fileInput.files);
+    // --- LÓGICA DEL MÓDULO ---
+
+    /** Carga y muestra los estudios desde Firestore en tiempo real. */
+    const loadAngioTACStudies = () => {
+        const q = query(studiesCollection, orderBy("studyDate", "desc"));
+        onSnapshot(q, (snapshot) => {
+            angioTACTableBody.innerHTML = '';
+            snapshot.forEach(doc => {
+                const study = doc.data();
+                const tr = document.createElement('tr');
+                tr.className = 'border-b hover:bg-gray-50';
+                
+                const reportStatusColor = study.reportStatus === 'Completado' ? 'bg-green-100 text-green-800' : 
+                                          study.reportStatus === 'En Proceso' ? 'bg-yellow-100 text-yellow-800' : 
+                                          'bg-red-100 text-red-800';
+
+                const emailStatusColor = study.emailSentStatus === 'Enviado' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800';
+
+                tr.innerHTML = `
+                    <td class="py-3 px-4 font-medium">${study.patientName}</td>
+                    <td class="py-3 px-4">${study.patientCedula}</td>
+                    <td class="py-3 px-4">${study.studyDate}</td>
+                    <td class="py-3 px-4"><span class="px-2 py-1 text-xs font-semibold rounded-full ${reportStatusColor}">${study.reportStatus || 'N/A'}</span></td>
+                    <td class="py-3 px-4"><span class="px-2 py-1 text-xs font-semibold rounded-full ${emailStatusColor}">${study.emailSentStatus || 'No Enviado'}</span></td>
+                    <td class="py-3 px-4 text-center">
+                        <button class="edit-btn text-blue-500 hover:text-blue-700 mr-2" data-id="${doc.id}"><i class="fas fa-pencil-alt"></i></button>
+                        <button class="delete-btn text-red-500 hover:text-red-700 mr-2" data-id="${doc.id}"><i class="fas fa-trash-alt"></i></button>
+                        <button class="email-btn text-green-500 hover:text-green-700 mr-2" data-id="${doc.id}"><i class="fas fa-envelope"></i></button>
+                        <button class="log-btn text-gray-500 hover:text-gray-700" data-id="${doc.id}"><i class="fas fa-history"></i></button>
+                    </td>
+                `;
+                angioTACTableBody.appendChild(tr);
+            });
+        });
+    };
     
-    try {
-        // Si es un nuevo estudio, primero lo creamos para tener un ID
-        let docRef;
-        let finalStudyId = studyId;
-        if (!studyId) {
-            const tempDoc = await addDoc(collection(db, 'angioTAC'), { patientName: 'Cargando...' });
-            finalStudyId = tempDoc.id;
-            docRef = tempDoc;
+    /** Abre el modal para crear o editar un estudio. */
+    const openStudyModal = async (studyId = null) => {
+        studyForm.reset();
+        studyIdInput.value = '';
+        fileListContainer.innerHTML = '';
+        auditInfo.innerHTML = '';
+        localFiles = [];
+        const user = getCurrentUser();
+
+        // Habilitar/deshabilitar el selector de estado según el rol
+        const isAllowedToChangeStatus = user.role === 'ADMINISTRADOR' || user.role === 'MÉDICO';
+        reportStatusSelect.disabled = !isAllowedToChangeStatus;
+
+        if (studyId) {
+            modalTitle.textContent = 'Editar Estudio AngioTAC';
+            const studyDocRef = doc(db, "angioTAC", studyId);
+            const studyDocSnap = await getDoc(studyDocRef);
+            if (studyDocSnap.exists()) {
+                const data = studyDocSnap.data();
+                studyIdInput.value = studyId;
+                document.getElementById('patient-name').value = data.patientName;
+                document.getElementById('patient-cedula').value = data.patientCedula;
+                document.getElementById('patient-phone').value = data.patientPhone || '';
+                document.getElementById('patient-email').value = data.patientEmail;
+                document.getElementById('study-name').value = data.studyName;
+                document.getElementById('study-date').value = data.studyDate;
+                document.getElementById('referring-physician').value = data.referringPhysician || '';
+                document.getElementById('referring-physician-email').value = data.referringPhysicianEmail || '';
+                reportStatusSelect.value = data.reportStatus || 'Pendiente';
+
+                // Mostrar información de auditoría
+                if (data.audit?.reportStatusLastModifiedBy) {
+                    const date = data.audit.reportStatusLastModifiedAt.toDate().toLocaleString();
+                    auditInfo.innerHTML = `<p>Estado modificado por: <b>${data.audit.reportStatusLastModifiedBy}</b> el ${date}</p>`;
+                }
+
+                localFiles = data.files || [];
+                renderFileList();
+            }
         } else {
-            docRef = doc(db, 'angioTAC', studyId);
+            modalTitle.textContent = 'Añadir Nuevo Estudio AngioTAC';
         }
+        studyModal.classList.remove('hidden');
+        studyModal.classList.add('flex');
+    };
 
-        const uploadedFiles = await Promise.all(newFiles.map(file => uploadFile(file, finalStudyId)));
-        const allFiles = [...currentFiles, ...uploadedFiles];
+    /** Cierra el modal de estudio. */
+    const closeStudyModal = () => {
+        studyModal.classList.add('hidden');
+        studyModal.classList.remove('flex');
+    };
 
-        const originalDoc = studyId ? (await getDoc(docRef)).data() : {};
-        const newStatus = document.getElementById('report-status').value;
-        const audit = originalDoc.audit || {};
-        if (originalDoc.reportStatus !== newStatus) {
-            audit.reportStatusLastModifiedBy = currentUser.displayName;
-            audit.reportStatusLastModifiedAt = serverTimestamp();
-        }
+    /** Guarda un estudio (nuevo o existente) en Firestore. */
+    const saveStudy = async (e) => {
+        e.preventDefault();
+        saveStudyBtn.disabled = true;
+        saveBtnText.classList.add('hidden');
+        saveSpinner.classList.remove('hidden');
+
+        const user = getCurrentUser();
+        const studyId = studyIdInput.value;
 
         const studyData = {
             patientName: document.getElementById('patient-name').value,
@@ -321,51 +164,225 @@ async function handleFormSubmit(e) {
             patientPhone: document.getElementById('patient-phone').value,
             patientEmail: document.getElementById('patient-email').value,
             studyName: document.getElementById('study-name').value,
-            studyDate: new Date(document.getElementById('study-date').value),
+            studyDate: document.getElementById('study-date').value,
             referringPhysician: document.getElementById('referring-physician').value,
             referringPhysicianEmail: document.getElementById('referring-physician-email').value,
-            reportStatus: newStatus,
-            files: allFiles,
-            audit: audit
+            reportStatus: reportStatusSelect.value,
+            files: [], // Se llenará después de subir los archivos
         };
 
-        await updateDoc(docRef, studyData);
-        document.getElementById('study-modal').classList.add('hidden');
-    } catch (error) {
-        console.error("Error guardando el estudio:", error);
-        alert("Error al guardar el estudio.");
-    } finally {
-        saveBtn.disabled = false;
-        saveBtnText.textContent = 'Guardar';
-        saveSpinner.classList.add('hidden');
-    }
-}
+        try {
+            // Manejar subida de archivos nuevos
+            const uploadPromises = localFiles.filter(f => f.file).map(f => uploadFile(studyId || Date.now().toString(), f.file));
+            const uploadedFilesInfo = await Promise.all(uploadPromises);
 
+            // Combinar archivos existentes con los recién subidos
+            const existingFiles = localFiles.filter(f => !f.file);
+            studyData.files = [...existingFiles, ...uploadedFilesInfo];
 
-async function deleteStudy(studyData) {
-    if(!confirm('¿Estás seguro de que quieres eliminar este estudio? Se borrarán también los archivos adjuntos.')) return;
+            if (studyId) {
+                // Actualizando un estudio existente
+                const studyDocRef = doc(db, "angioTAC", studyId);
+                const originalDoc = await getDoc(studyDocRef);
+                const originalData = originalDoc.data();
+
+                // Lógica de auditoría
+                if (originalData.reportStatus !== studyData.reportStatus) {
+                    studyData.audit = {
+                        ...originalData.audit,
+                        reportStatusLastModifiedBy: user.displayName,
+                        reportStatusLastModifiedAt: serverTimestamp()
+                    };
+                }
+                await updateDoc(studyDocRef, studyData);
+                showAlert('Estudio actualizado con éxito.');
+            } else {
+                // Creando un nuevo estudio
+                studyData.emailSentStatus = 'No Enviado';
+                const docRef = await addDoc(studiesCollection, studyData);
+                showAlert('Estudio creado con éxito.');
+            }
+            closeStudyModal();
+        } catch (error) {
+            console.error("Error al guardar el estudio:", error);
+            showAlert('Error al guardar el estudio.');
+        } finally {
+            saveStudyBtn.disabled = false;
+            saveBtnText.classList.remove('hidden');
+            saveSpinner.classList.add('hidden');
+        }
+    };
     
-    // Borrar archivos de Storage primero
-    const files = studyData.files || [];
-    for (const file of files) {
-        await deleteObject(ref(storage, file.storagePath));
-    }
+    /** Elimina un estudio y sus archivos asociados. */
+    const deleteStudy = async (studyId) => {
+        if (await showConfirm('¿Estás seguro de que quieres eliminar este estudio y todos sus archivos?')) {
+            try {
+                const studyDocRef = doc(db, "angioTAC", studyId);
+                const studyDocSnap = await getDoc(studyDocRef);
+                if (studyDocSnap.exists()) {
+                    const filesToDelete = studyDocSnap.data().files || [];
+                    const deletePromises = filesToDelete.map(file => deleteObject(ref(storage, file.storagePath)));
+                    await Promise.all(deletePromises);
+                }
+                await deleteDoc(studyDocRef);
+                showAlert('Estudio eliminado con éxito.');
+            } catch (error) {
+                console.error("Error al eliminar el estudio:", error);
+                showAlert('Error al eliminar el estudio.');
+            }
+        }
+    };
 
-    await deleteDoc(doc(db, 'angioTAC', studyData.id));
+    /** Renderiza la lista de archivos en el modal. */
+    const renderFileList = () => {
+        fileListContainer.innerHTML = '';
+        localFiles.forEach((fileInfo, index) => {
+            const fileName = fileInfo.name || fileInfo.file.name;
+            const fileElement = document.createElement('div');
+            fileElement.className = 'flex items-center justify-between bg-gray-100 p-2 rounded';
+            fileElement.innerHTML = `
+                <a href="${fileInfo.url || '#'}" target="_blank" class="text-indigo-600 hover:underline text-sm">${fileName}</a>
+                <button type="button" data-index="${index}" class="remove-file-btn text-red-500 hover:text-red-700">&times;</button>
+            `;
+            fileListContainer.appendChild(fileElement);
+        });
+    };
+
+    /** Sube un archivo a Firebase Storage. */
+    const uploadFile = (folder, file) => {
+        return new Promise((resolve, reject) => {
+            const storagePath = `studies/${folder}/${Date.now()}_${file.name}`;
+            const storageRef = ref(storage, storagePath);
+            const uploadTask = uploadBytesResumable(storageRef, file);
+
+            uploadTask.on('state_changed', 
+                null, 
+                (error) => reject(error), 
+                async () => {
+                    const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+                    resolve({
+                        name: file.name,
+                        url: downloadURL,
+                        storagePath: storagePath
+                    });
+                }
+            );
+        });
+    };
+    
+    /** Muestra la bitácora de envíos de correo. */
+    const showEmailLog = (studyId) => {
+        const logCollection = collection(db, "angioTAC", studyId, "emailLog");
+        const q = query(logCollection, orderBy("timestamp", "desc"));
+        onSnapshot(q, (snapshot) => {
+            emailLogContent.innerHTML = '';
+            if (snapshot.empty) {
+                emailLogContent.innerHTML = '<p class="text-gray-500">No hay registros de envío.</p>';
+            } else {
+                snapshot.forEach(doc => {
+                    const log = doc.data();
+                    const logEntry = document.createElement('div');
+                    logEntry.className = 'border-b p-2';
+                    logEntry.innerHTML = `
+                        <p><b>Fecha:</b> ${log.timestamp.toDate().toLocaleString()}</p>
+                        <p><b>Destinatario:</b> ${log.recipient}</p>
+                        <p><b>Estado:</b> <span class="font-semibold ${log.status === 'Exitoso' ? 'text-green-600' : 'text-red-600'}">${log.status}</span></p>
+                    `;
+                    emailLogContent.appendChild(logEntry);
+                });
+            }
+            emailLogModal.classList.remove('hidden');
+            emailLogModal.classList.add('flex');
+        });
+    };
+
+    /** Simula el envío de un correo y registra en la bitácora. */
+    const sendStudyByEmail = async (studyId) => {
+        if (await showConfirm('¿Confirmas que deseas enviar este estudio por correo?')) {
+            const user = getCurrentUser();
+            const studyDocRef = doc(db, "angioTAC", studyId);
+            const studyDoc = await getDoc(studyDocRef);
+            const studyData = studyDoc.data();
+            
+            const logCollection = collection(db, "angioTAC", studyId, "emailLog");
+            const logData = {
+                timestamp: serverTimestamp(),
+                recipient: studyData.patientEmail,
+                sentBy: user.displayName,
+                status: 'Exitoso' // Simulación
+            };
+
+            try {
+                await addDoc(logCollection, logData);
+                await updateDoc(studyDocRef, { 
+                    emailSentStatus: 'Enviado',
+                    audit: {
+                        ...studyData.audit,
+                        emailSentLastModifiedBy: user.displayName,
+                        emailSentLastModifiedAt: serverTimestamp()
+                    }
+                });
+                showAlert('Correo "enviado" y registrado en la bitácora.');
+            } catch (error) {
+                console.error("Error al registrar envío de correo:", error);
+                showAlert('Error al registrar el envío.');
+            }
+        }
+    };
+
+
+    // --- EVENT LISTENERS ---
+    addStudyBtn.addEventListener('click', () => openStudyModal());
+    closeModalBtn.addEventListener('click', closeStudyModal);
+    cancelModalBtn.addEventListener('click', closeStudyModal);
+    studyForm.addEventListener('submit', saveStudy);
+    closeEmailLogBtn.addEventListener('click', () => {
+        emailLogModal.classList.add('hidden');
+        emailLogModal.classList.remove('flex');
+    });
+
+    angioTACTableBody.addEventListener('click', (e) => {
+        const target = e.target.closest('button');
+        if (!target) return;
+
+        const studyId = target.dataset.id;
+        if (target.classList.contains('edit-btn')) openStudyModal(studyId);
+        if (target.classList.contains('delete-btn')) deleteStudy(studyId);
+        if (target.classList.contains('email-btn')) sendStudyByEmail(studyId);
+        if (target.classList.contains('log-btn')) showEmailLog(studyId);
+    });
+
+    fileUploadInput.addEventListener('change', (e) => {
+        for (const file of e.target.files) {
+            localFiles.push({ file: file, name: file.name });
+        }
+        renderFileList();
+    });
+
+    fileListContainer.addEventListener('click', async (e) => {
+        if (e.target.classList.contains('remove-file-btn')) {
+            const index = parseInt(e.target.dataset.index);
+            const fileToRemove = localFiles[index];
+
+            if (fileToRemove && !fileToRemove.file) { // Es un archivo existente
+                if (await showConfirm("¿Eliminar este archivo permanentemente?")) {
+                    try {
+                        await deleteObject(ref(storage, fileToRemove.storagePath));
+                        localFiles.splice(index, 1);
+                        renderFileList();
+                    } catch (error) {
+                        console.error("Error al eliminar archivo de Storage:", error);
+                        showAlert("No se pudo eliminar el archivo.");
+                    }
+                }
+            } else { // Es un archivo nuevo, aún no subido
+                localFiles.splice(index, 1);
+                renderFileList();
+            }
+        }
+    });
+
+    // Carga inicial de datos
+    loadAngioTACStudies();
 }
 
-// --- FUNCIÓN DE INICIALIZACIÓN DEL MÓDULO ---
-
-export function initializeAngioTAC(firestoreDb, firebaseStorage, user) {
-    db = firestoreDb;
-    storage = firebaseStorage;
-    currentUser = user;
-    renderUI('angiotac-view');
-
-    // Nos aseguramos de que el listener del formulario solo se añada una vez
-    const studyForm = document.getElementById('study-form');
-    // Clonamos y reemplazamos para remover listeners viejos
-    const newForm = studyForm.cloneNode(true);
-    studyForm.parentNode.replaceChild(newForm, studyForm);
-    newForm.addEventListener('submit', handleFormSubmit);
-}
