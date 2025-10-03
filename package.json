@@ -1,0 +1,17 @@
+{
+  "name": "node-firebase-html-project",
+  "version": "1.0.0",
+  "description": "A project using Node.js, Firebase, and HTML for a web application.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.1.14",
+    "express": "^4.17.1",
+    "firebase": "^12.3.0",
+    "tailwindcss": "^4.1.14"
+  },
+  "author": "Your Name",
+  "license": "MIT"
+}

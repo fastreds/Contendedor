@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plataforma de Reportes Médicos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .sidebar-icon { width: 20px; height: 20px; }
+        .fade-in { animation: fadeIn 0.5s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        /* Estilo para el spinner de carga */
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <!-- Pantalla de Login -->
+    <div id="login-container" class="flex items-center justify-center min-h-screen bg-gray-50">
+        <div class="w-full max-w-md p-8 space-y-8 bg-white rounded-2xl shadow-lg">
+            <div class="text-center">
+                <i class="fas fa-hospital-user fa-3x text-indigo-600"></i>
+                <h2 class="mt-4 text-3xl font-bold text-gray-900">Bienvenido</h2>
+                <p class="mt-2 text-sm text-gray-600">Inicia sesión para acceder a la plataforma</p>
+            </div>
+            
+            <form id="email-login-form" class="mt-8 space-y-6">
+                <input type="email" id="email" placeholder="Correo electrónico" class="w-full px-4 py-2 text-gray-700 bg-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500" required autocomplete="email">
+                <input type="password" id="password" placeholder="Contraseña" class="w-full px-4 py-2 mt-4 text-gray-700 bg-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500" required autocomplete="current-password">
+                <button type="submit" class="w-full py-3 mt-6 font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    Iniciar Sesión / Registrarse
+                </button>
+            </form>
+            <p class="mt-2 text-xs text-center text-gray-500">Si no tienes una cuenta, se creará una automáticamente.</p>
+
+            <div class="relative my-4">
+                <div class="absolute inset-0 flex items-center">
+                    <div class="w-full border-t border-gray-300"></div>
+                </div>
+                <div class="relative flex justify-center text-sm">
+                    <span class="px-2 bg-white text-gray-500">O continúa con</span>
+                </div>
+            </div>
+
+            <div>
+                <button id="google-login-btn" class="w-full flex items-center justify-center py-3 px-4 text-sm font-medium text-gray-800 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    <img class="w-6 h-6 mr-2" src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google icon">
+                    <span>Iniciar Sesión con Google</span>
+                </button>
+            </div>
+             <p id="login-error" class="text-red-500 text-sm text-center mt-2"></p>
+        </div>
+    </div>
+
+    <!-- Contenedor Principal de la App (Dashboard) -->
+    <div id="app-container" class="hidden">
+        <div class="flex h-screen bg-gray-200">
+            <!-- Sidebar -->
+            <aside id="sidebar" class="w-64 bg-gray-800 text-white flex flex-col">
+                <div class="h-20 flex items-center justify-center bg-gray-900">
+                    <i class="fas fa-laptop-medical fa-2x text-indigo-400"></i>
+                    <span class="ml-3 text-xl font-bold">Reportes</span>
+                </div>
+                <nav class="flex-1 px-4 py-4 space-y-2">
+                    <a href="#" data-view="dashboard" class="nav-link flex items-center px-4 py-2.5 text-sm font-medium rounded-md bg-gray-700">
+                        <i class="fas fa-tachometer-alt sidebar-icon"></i><span class="ml-4">Dashboard</span>
+                    </a>
+                    <a href="#" data-view="angiotac" class="nav-link flex items-center px-4 py-2.5 text-sm font-medium rounded-md hover:bg-gray-700">
+                        <i class="fas fa-heart-pulse sidebar-icon"></i><span class="ml-4">AngioTAC</span>
+                    </a>
+                    <a href="#" data-view="ultrasonido" class="nav-link flex items-center px-4 py-2.5 text-sm font-medium rounded-md hover:bg-gray-700">
+                        <i class="fas fa-water sidebar-icon"></i><span class="ml-4">Ultrasonido Carótidas</span>
+                    </a>
+                    <a href="#" data-view="user-management" id="user-management-link" class="nav-link flex items-center px-4 py-2.5 text-sm font-medium rounded-md hover:bg-gray-700 hidden">
+                       <i class="fas fa-users-cog sidebar-icon"></i><span class="ml-4">Gestión de Usuarios</span>
+                    </a>
+                </nav>
+                <div class="p-4 border-t border-gray-700">
+                    <div id="user-profile" class="flex items-center">
+                        <img id="user-photo" src="https://placehold.co/40x40" class="w-10 h-10 rounded-full">
+                        <div class="ml-3">
+                            <p id="user-name" class="text-sm font-semibold">Cargando...</p>
+                            <p id="user-role" class="text-xs text-indigo-400">Rol</p>
+                        </div>
+                    </div>
+                    <button id="logout-btn" class="w-full mt-4 flex items-center justify-center py-2 px-4 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700">
+                        <i class="fas fa-sign-out-alt mr-2"></i>
+                        Cerrar Sesión
+                    </button>
+                </div>
+            </aside>
+
+            <!-- Contenido Principal -->
+            <main class="flex-1 flex flex-col overflow-hidden">
+                <header class="h-20 flex items-center justify-between px-6 bg-white border-b">
+                    <h1 id="view-title" class="text-2xl font-semibold text-gray-800">Dashboard</h1>
+                </header>
+                <div class="flex-1 p-6 overflow-y-auto">
+                    
+                    <div id="dashboard-view" class="view-content fade-in">
+                        <h2 class="text-xl font-semibold mb-4">Bienvenido a la plataforma</h2>
+                        <p>Selecciona un módulo en el menú lateral para comenzar.</p>
+                    </div>
+
+                    <div id="user-management-view" class="view-content fade-in hidden">
+                         <div class="bg-white p-6 rounded-lg shadow-md">
+                            <h2 class="text-xl font-semibold mb-4">Administrar Usuarios</h2>
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full bg-white">
+                                    <thead class="bg-gray-200">
+                                        <tr>
+                                            <th class="py-3 px-4 text-left">Usuario</th>
+                                            <th class="py-3 px-4 text-left">Correo</th>
+                                            <th class="py-3 px-4 text-left">Rol Actual</th>
+                                            <th class="py-3 px-4 text-left">Cambiar Rol</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="users-table-body"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="angiotac-view" class="view-content fade-in hidden"></div>
+                    <div id="ultrasonido-view" class="view-content fade-in hidden"></div>
+                </div>
+            </main>
+        </div>
+    </div>
+    
+    <!-- Modal para editar/crear registros -->
+    <div id="study-modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6 transform transition-all max-h-screen overflow-y-auto">
+            <div class="flex justify-between items-center mb-4 border-b pb-2">
+                <h2 id="modal-title" class="text-2xl font-bold text-gray-800"></h2>
+                <button id="close-modal-btn" class="text-gray-500 hover:text-gray-800 text-2xl">&times;</button>
+            </div>
+            <form id="study-form">
+                <input type="hidden" id="study-id">
+                <input type="hidden" id="study-type">
+                
+                <div class="space-y-4">
+                    <h3 class="text-lg font-semibold text-gray-700 border-b">Datos del Paciente</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <input type="text" id="patient-name" placeholder="Nombre del Paciente" class="p-2 border rounded" required>
+                        <input type="text" id="patient-cedula" placeholder="Cédula" class="p-2 border rounded" required>
+                        <input type="tel" id="patient-phone" placeholder="Teléfono" class="p-2 border rounded">
+                        <input type="email" id="patient-email" placeholder="Correo Electrónico" class="p-2 border rounded" required>
+                    </div>
+
+                    <h3 class="text-lg font-semibold text-gray-700 border-b pt-4">Datos del Estudio</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <input type="text" id="study-name" placeholder="Ej: AngioTAC Coronario" class="w-full p-2 border rounded" required>
+                        <input type="date" id="study-date" class="w-full p-2 border rounded" required>
+                        <input type="text" id="referring-physician" placeholder="Médico Referidor" class="p-2 border rounded">
+                        <input type="email" id="referring-physician-email" placeholder="Correo del Referidor" class="p-2 border rounded">
+                    </div>
+                     <div>
+                        <label for="report-status" class="block text-sm font-medium text-gray-700">Estado del Reporte</label>
+                        <select id="report-status" class="w-full p-2 border rounded mt-1">
+                            <option value="Pendiente">Pendiente</option>
+                            <option value="En Proceso">En Proceso</option>
+                            <option value="Completado">Completado</option>
+                        </select>
+                     </div>
+                     <div id="audit-info" class="text-xs text-gray-500 space-y-1"></div>
+
+                    <h3 class="text-lg font-semibold text-gray-700 border-b pt-4">Documentos Adjuntos</h3>
+                    <div>
+                        <input type="file" id="file-upload" multiple class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+                        <div id="file-list" class="mt-2 space-y-2"></div>
+                    </div>
+                </div>
+
+                <div class="mt-6 flex justify-end border-t pt-4">
+                    <button type="button" id="cancel-modal-btn" class="px-4 py-2 bg-gray-300 rounded mr-2">Cancelar</button>
+                    <button type="submit" id="save-study-btn" class="px-4 py-2 bg-indigo-600 text-white rounded flex items-center justify-center">
+                        <span id="save-btn-text">Guardar</span>
+                        <div id="save-spinner" class="loader hidden ml-2"></div>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Modal de Bitácora de Correo -->
+    <div id="email-log-modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-lg p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold">Bitácora de Envíos de Correo</h2>
+                <button id="close-email-log-btn" class="text-gray-500 hover:text-gray-800 text-2xl">&times;</button>
+            </div>
+            <div id="email-log-content" class="max-h-80 overflow-y-auto">
+                <!-- Contenido se insertará aquí -->
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="/js/app.js"></script>
+</body>
+</html>
+

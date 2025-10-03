@@ -1,0 +1,20 @@
+{
+  "name": "medical-imaging-reports",
+  "version": "1.0.0",
+  "description": "Aplicación web modular para la gestión de reportes de imágenes médicas.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "keywords": [
+    "firebase",
+    "express",
+    "tailwind",
+    "medical"
+  ],
+  "author": "Marcos Ortega Araya",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
